@@ -129,7 +129,12 @@ func (m *Money) formatNumber(opts Options) string {
 }
 
 // extractWholeAndDecimal splits |fractional| / subunit_to_unit into its whole and
-// (unpadded) decimal digit strings, matching BigDecimal#to_s('F').split('.').
+// (unpadded) decimal digit strings, matching the gem's
+// BigDecimal(fractional/subunit_to_unit).to_s('F').split('.'). The decimal part
+// is the exact terminating expansion of the remainder over subunit_to_unit, with
+// trailing zeros trimmed (format_decimal_part re-pads it to decimal_places). All
+// currencies in the ISO table have a terminating expansion (subunit_to_unit is a
+// product of 2s and 5s), so the long division below always terminates.
 func (m *Money) extractWholeAndDecimal() (whole, decimal string) {
 	frac := m.fractional
 	if frac < 0 {
@@ -141,23 +146,17 @@ func (m *Money) extractWholeAndDecimal() (whole, decimal string) {
 	if rem == 0 {
 		return whole, "0"
 	}
-	// Decimal digits: rem / sub, to exactly decimal_places digits, trailing
-	// zeros trimmed to mirror BigDecimal's F formatting (which we then re-pad in
-	// format_decimal_part).
-	places := m.currency.DecimalPlaces()
-	if places <= 0 {
-		return whole, "0"
+	// Long division of rem/sub, one decimal digit at a time, until the remainder
+	// clears. A pathological non-terminating fraction is capped at 50 digits.
+	var b strings.Builder
+	for i := 0; rem != 0 && i < 50; i++ {
+		rem *= 10
+		b.WriteByte(byte('0' + rem/sub))
+		rem %= sub
 	}
-	// Build rem padded to `places` digits.
-	digits := big.NewInt(rem).String()
-	for len(digits) < places {
-		digits = "0" + digits
-	}
-	digits = strings.TrimRight(digits, "0")
-	if digits == "" {
-		digits = "0"
-	}
-	return whole, digits
+	// rem != 0 above guarantees at least one non-zero digit was emitted, so the
+	// trimmed string is never empty.
+	return whole, strings.TrimRight(b.String(), "0")
 }
 
 // formatDecimalPart applies no_cents / no_cents_if_whole / padding / trailing-zero

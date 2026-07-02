@@ -212,6 +212,5 @@ func roundRatToInt(r *big.Rat, mode RoundingMode) int64 {
 	return quo.Int64()
 }
 
-// strPtr / boolPtr are small helpers for building Options with tri-state fields.
+// strPtr builds a *string for the tri-state Options fields.
 func strPtr(s string) *string { return &s }
-func boolPtr(b bool) *bool    { return &b }

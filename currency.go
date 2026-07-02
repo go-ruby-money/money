@@ -138,18 +138,29 @@ func init() { resetCurrencies() }
 // resetCurrencies rebuilds the table from the embedded JSON, matching the gem's
 // Loader.load_currencies merge order (iso, then non-iso, then backwards-compat).
 func resetCurrencies() {
+	table, err := loadCurrencyTable(currencyISOJSON, currencyNonISOJSON, currencyBackwardsCompatibleJSON)
+	if err != nil {
+		panic("money: embedded currency data is corrupt: " + err.Error())
+	}
 	registry.mu.Lock()
-	defer registry.mu.Unlock()
-	registry.table = map[string]*Currency{}
-	for _, blob := range [][]byte{currencyISOJSON, currencyNonISOJSON, currencyBackwardsCompatibleJSON} {
+	registry.table = table
+	registry.mu.Unlock()
+}
+
+// loadCurrencyTable parses and merges the given JSON blobs into a currency table
+// keyed by lowercase id. It returns an error on malformed JSON.
+func loadCurrencyTable(blobs ...[]byte) (map[string]*Currency, error) {
+	table := map[string]*Currency{}
+	for _, blob := range blobs {
 		var raw map[string]rawCurrency
 		if err := json.Unmarshal(blob, &raw); err != nil {
-			panic("money: embedded currency data is corrupt: " + err.Error())
+			return nil, err
 		}
 		for id, rc := range raw {
-			registry.table[strings.ToLower(id)] = rc.toCurrency(id)
+			table[strings.ToLower(id)] = rc.toCurrency(id)
 		}
 	}
+	return table, nil
 }
 
 func (rc rawCurrency) toCurrency(id string) *Currency {
@@ -201,7 +212,7 @@ func currencyByID(id string) (*Currency, error) {
 	return c, nil
 }
 
-// MustCurrency is like [Currency_] but panics on an unknown id; it is convenient
+// MustCurrency is like [NewCurrency] but panics on an unknown id; it is convenient
 // for currencies known to exist at call sites (e.g. MustCurrency("USD")).
 func MustCurrency(id string) *Currency {
 	c, err := currencyByID(id)
